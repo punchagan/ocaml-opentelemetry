@@ -41,18 +41,34 @@ module Server = struct
         let+ () = dbg_request "logs" request Signal.Pp.logs logs in
         `OK, Some (Signal.Logs logs)
       | unexepected ->
-        let+ () = Lwt_io.eprintf "unexpected endpoint %s\n" unexepected in
+        let+ () =
+          Lwt_io.eprintf "unexpected endpoint %s -- status %s\n" unexepected
+            (Http.Status.to_string `Not_found)
+        in
         `Not_found, None
     in
     push_signal signal;
     let resp_body = Cohttp_lwt.Body.of_string "" in
     Cohttp_lwt_unix.Server.respond ~status ~body:resp_body ()
 
-  let run port push_signals =
-    let* () = Lwt_io.eprintf "starting server\n" in
+  let run ~ipv6 port push_signals =
+    (* FIXME: Ideally we could bind both IPv6 and IPv4, and not have to worry
+       about manually deciding which to use. However, Cohttp depends on Conduit
+       for this, which is not currently able to support a dual stack. See
+       https://github.com/mirage/ocaml-conduit/issues/323 . When that is
+       resolved, we should be able to remove this logic, along with all
+       ccurences of the [ipv6] argument. *)
+    let* ctx =
+      if ipv6 then
+        let+ ctx = Conduit_lwt_unix.init ~src:"::1" () in
+        Some (Cohttp_lwt_unix.Net.init ~ctx ())
+      else
+        Lwt.return None
+    in
+    let* () = Lwt_io.eprintf "starting server on http://localhost:%d\n" port in
     Cohttp_lwt_unix.Server.(
       make ~callback:(handler push_signals) ()
-      |> create ~mode:(`TCP (`Port port)))
+      |> create ?ctx ~mode:(`TCP (`Port port)))
 end
 
 (** Manage launching and cleaning up the program we are testing *)
@@ -89,10 +105,10 @@ module Tested_program = struct
     validate_exit result
 end
 
-let collect_traces ~port program_to_test push_signals () =
+let collect_traces ~ipv6 ~port program_to_test push_signals () =
   let* () =
     Lwt.pick
-      [ Server.run port push_signals; Tested_program.run program_to_test ]
+      [ Server.run ~ipv6 port push_signals; Tested_program.run program_to_test ]
   in
   (* Let the tester know all the signals have be sent *)
   Lwt.return (push_signals None)
@@ -103,21 +119,21 @@ let default_port =
   | [ _; _; port ] -> int_of_string port
   | _ -> failwith "unexpected format in Client.Config.default_url"
 
-let gather_signals ?(port = default_port) program_to_test =
+let gather_signals ~ipv6 ?(port = default_port) program_to_test =
   Lwt_main.run
   @@
   let stream, push = Lwt_stream.create () in
-  let* () = collect_traces ~port program_to_test push () in
+  let* () = collect_traces ~ipv6 ~port program_to_test push () in
   Lwt_stream.to_list stream
 
 (* Just run the server, and print the signals gathered. *)
-let run ?(port = default_port) () =
+let run ?(port = default_port) ~ipv6 () =
   Lwt_main.run
   @@
   let stream, push = Lwt_stream.create () in
   Lwt.join
     [
-      Server.run port push;
+      Server.run ~ipv6 port push;
       Lwt_stream.iter_s
         (fun s -> Format.asprintf "%a" Signal.Pp.pp s |> Lwt_io.printl)
         stream;

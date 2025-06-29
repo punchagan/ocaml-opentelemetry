@@ -1,3 +1,7 @@
+(** This library defines a set of tests expecting that are meant to be run on an
+    application whick emits a set of signals that is isomorphic to those emitted
+    by the ../bin/emit1_cohttp.ml and ../bin/emit1_eio.ml executables. *)
+
 module Client = Opentelemetry_client
 module Proto = Opentelemetry.Proto
 open Containers
@@ -92,6 +96,7 @@ let count_logs_with_body p signals =
   |> List.length
 
 type params = {
+  ipv6: bool;
   jobs: int;
   batch_traces: int;
   batch_metrics: int;
@@ -185,7 +190,9 @@ let run_tests cmds =
     |> List.map (fun (exec, params) ->
            let cmd = cmd exec params in
            let name = cmd |> String.concat " " in
-           let signal_batches = Signal_gatherer.gather_signals cmd in
+           let signal_batches =
+             Signal_gatherer.gather_signals ~ipv6:params.ipv6 cmd
+           in
            (* Let server reset *)
            Unix.sleep 1;
            name, tests params signal_batches)

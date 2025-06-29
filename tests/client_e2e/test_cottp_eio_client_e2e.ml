@@ -5,28 +5,20 @@ open Clients_e2e_lib
 let () =
   Clients_e2e_lib.run_tests
     [
-      (* TODO: Running with batch sizes of 1 causes deadlocks *)
-      (* ( "emit1_cohttp", *)
-      (*   { *)
-      (*     ipv6 = false; *)
-      (*     jobs = 1; *)
-      (*     iterations = 1; *)
-      (*     batch_traces = 1; *)
-      (*     batch_metrics = 1; *)
-      (*     batch_logs = 1; *)
-      (*   } ); *)
-      ( "emit1_cohttp",
+      ( "emit1_eio",
         {
-          ipv6 = false;
+          (* Cohttp_eio tries to use IPv6 first. And if the host supports it but
+             the cohttp client does not, we end up with a refused connection. *)
+          ipv6 = true;
           jobs = 1;
           iterations = 1;
           batch_traces = 2;
           batch_metrics = 2;
           batch_logs = 2;
         } );
-      ( "emit1_cohttp",
+      ( "emit1_eio",
         {
-          ipv6 = false;
+          ipv6 = true;
           jobs = 3;
           iterations = 1;
           batch_traces = 400;
