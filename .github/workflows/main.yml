@@ -48,7 +48,7 @@ jobs:
 
       # We cannot install packages that need eio on ocaml versions before 5
       - run: |
-          packages=$(ls *.opam | grep -v eio)
+          packages=$(ls ./*.opam | grep -v eio)
           opam install $packages --deps-only --with-test --solver=mccs
         if: ${{ ! (startsWith('5', matrix.ocaml-compiler)) }}
 
